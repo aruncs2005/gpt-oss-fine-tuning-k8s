@@ -95,7 +95,7 @@ def create_training_config(output_dir: str, world_size: int, local_rank: int):
     
     # P5.48xlarge has 8x H100 GPUs with 80GB each
     # With ZeRO-3, we can use larger batch sizes due to memory savings
-    per_device_batch_size = 8  # Increased thanks to ZeRO-3 memory efficiency
+    per_device_batch_size = 1  # Increased thanks to ZeRO-3 memory efficiency
     gradient_accumulation_steps = 2  # Effective batch size = 8 * 2 * 16 = 256
     
     return SFTConfig(
