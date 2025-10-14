@@ -110,7 +110,7 @@ def create_training_config(output_dir: str, world_size: int, local_rank: int):
         lr_scheduler_type="cosine",
         
         # DeepSpeed ZeRO-3 configuration
-        deepspeed="ds_config.json",  # Will be created separately
+        deepspeed="ds_config_zero3.json",
         
         # Distributed training settings
         dataloader_num_workers=8,
@@ -174,63 +174,6 @@ def apply_quantization(model, trainer, calib_size: int = 128):
     mtq.quantize(model, quantization_config, forward_loop)
     logger.info("Quantization applied successfully")
 
-def create_deepspeed_config(output_dir: str):
-    """Create DeepSpeed ZeRO-3 configuration"""
-    ds_config = {
-        "train_batch_size": "auto",
-        "train_micro_batch_size_per_gpu": "auto",
-        "gradient_accumulation_steps": "auto",
-        "gradient_clipping": "auto",
-        "bf16": {
-            "enabled": True
-        },
-        "zero_optimization": {
-            "stage": 3,
-            "offload_optimizer": {
-                "device": "none"  # Keep optimizer on GPU for P5 performance
-            },
-            "offload_param": {
-                "device": "none"  # Keep params on GPU
-            },
-            "overlap_comm": True,
-            "contiguous_gradients": True,
-            "sub_group_size": 1e9,
-            "reduce_bucket_size": "auto",
-            "stage3_prefetch_bucket_size": "auto",
-            "stage3_param_persistence_threshold": "auto",
-            "stage3_max_live_parameters": 1e9,
-            "stage3_max_reuse_distance": 1e9,
-            "stage3_gather_16bit_weights_on_model_save": True
-        },
-        "optimizer": {
-            "type": "AdamW",
-            "params": {
-                "lr": "auto",
-                "betas": "auto",
-                "eps": "auto",
-                "weight_decay": "auto"
-            }
-        },
-        "scheduler": {
-            "type": "WarmupDecayLR",
-            "params": {
-                "warmup_min_lr": "auto",
-                "warmup_max_lr": "auto",
-                "warmup_num_steps": "auto",
-                "total_num_steps": "auto"
-            }
-        },
-        "steps_per_print": 10,
-        "wall_clock_breakdown": False
-    }
-    
-    config_path = Path(output_dir) / "ds_config.json"
-    config_path.parent.mkdir(parents=True, exist_ok=True)
-    with open(config_path, "w") as f:
-        json.dump(ds_config, f, indent=2)
-    
-    logger.info(f"DeepSpeed config saved to {config_path}")
-    return str(config_path)
 
 def main():
     parser = argparse.ArgumentParser(description="Multinode QAT Fine-tuning with DeepSpeed ZeRO-3")
@@ -256,8 +199,6 @@ def main():
             logger.info(f"Dataset: {args.dataset_name}")
             logger.info(f"Output: {args.output_dir}")
             
-            # Create DeepSpeed config
-            ds_config_path = create_deepspeed_config(args.output_dir)
         
         # Wait for rank 0 to create config
         dist.barrier()

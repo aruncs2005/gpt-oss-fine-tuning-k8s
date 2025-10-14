@@ -110,11 +110,12 @@ spec:
               command: ["hyperpodrun"]
               args:
                 - "--tee=3"
-                - "--nnodes=4"
+                - "--nnodes=2"
                 - "--nproc_per_node=8"
-                - "-m"
-                - "scripts/train.py"
-               
+                - "/workspace/scripts/train.py"
+                - --model_name=openai/gpt-oss-20b
+                - --dataset-name=HuggingFaceH4/Multilingual-Thinking
+                - --output-dir=/data/gptoss
               volumeMounts:
                 - name: shmem
                   mountPath: /dev/shm
