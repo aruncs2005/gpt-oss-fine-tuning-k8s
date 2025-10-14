@@ -1,0 +1,124 @@
+apiVersion: sagemaker.amazonaws.com/v1
+kind: HyperPodPyTorchJob
+metadata:
+  name: qwen-hpto
+  labels:
+    app.kubernetes.io/name: HyperPod
+    app.kubernetes.io/managed-by: kustomize
+spec:
+  nprocPerNode: '8'
+  runPolicy:
+    jobMaxRetryCount: 10
+    restartPolicy:
+      numRestartBeforeFullJobRestart: 3
+      evalPeriodSeconds: 21600
+      maxFullJobRestarts: 1
+    cleanPodPolicy: All
+    logMonitoringConfiguration:
+      - name: JobStart
+        logPattern: '.*train/loss:.*'
+        expectedStartCutOffInSeconds: 240
+      - name: JobHangingDetection
+        logPattern: '.*train/loss:.*'
+        expectedRecurringFrequencyInSeconds: 600
+  replicaSpecs:
+    - name: pods
+      replicas: 2
+      template:
+        metadata:
+          labels:
+            job-name: qwen-sft-hpto
+            replica-type: pods
+        spec:
+          #serviceAccountName: s3-cw-access
+          volumes:
+            - name: shmem
+              hostPath:
+                path: /dev/shm
+            - name: local
+              hostPath:
+                path: /mnt/k8s-disks/0
+            - name: persistent-storage
+              persistentVolumeClaim:
+                claimName: fsx-claim
+          affinity:
+            podAntiAffinity:
+              requiredDuringSchedulingIgnoredDuringExecution:
+                - labelSelector:
+                    matchLabels:
+                      job-name: qwen-sft-hpto
+                  topologyKey: kubernetes.io/hostname
+            nodeAffinity:
+              requiredDuringSchedulingIgnoredDuringExecution:
+                nodeSelectorTerms:
+                  - matchExpressions:
+                      - key: sagemaker.amazonaws.com/node-health-status
+                        operator: In
+                        values:
+                          - Schedulable
+                      - key: beta.kubernetes.io/instance-type
+                        operator: In
+                        values:
+                          - "ml.p5.48xlarge"
+          topologySpreadConstraints:
+            - maxSkew: 1
+              topologyKey: kubernetes.io/hostname
+              whenUnsatisfiable: DoNotSchedule
+              labelSelector:
+                matchLabels:
+                  job-name: qwen-sft-hpto
+          containers:
+            - name: pytorch
+              image: 535002850097.dkr.ecr.us-east-1.amazonaws.com/verl-training:latest
+              imagePullPolicy: Always
+              resources:
+                requests:
+                  nvidia.com/gpu: 8
+                  vpc.amazonaws.com/efa: 32
+                limits:
+                  nvidia.com/gpu: 8
+                  vpc.amazonaws.com/efa: 32
+              env:
+                - name: LOGLEVEL
+                  value: INFO
+                - name: FI_PROVIDER
+                  value: efa
+                - name: FI_EFA_USE_DEVICE_RDMA
+                  value: '1'
+                - name: FI_EFA_FORK_SAFE
+                  value: '1'
+                - name: FI_EFA_ENABLE_SHM_TRANSFER
+                  value: '1'
+                - name: TORCH_DISTRIBUTED_DEBUG
+                  value: DETAIL
+                - name: TORCH_NCCL_ENABLE_MONITORING
+                  value: '1'
+                - name: TORCH_NCCL_TRACE_BUFFER_SIZE
+                  value: '20000'
+                - name: TORCH_NCCL_DUMP_ON_TIMEOUT
+                  value: '1'
+                - name: TORCH_NCCL_DEBUG_INFO_TEMP_FILE
+                  value: /local/nccl_trace_rank_
+                - name: PYTORCH_CUDA_ALLOC_CONF
+                  value: 'expandable_segments:True'
+                - name: NCCL_DEBUG
+                  value: INFO
+                - name: NCCL_SOCKET_IFNAME
+                  value: ^lo
+                - name: TORCH_NCCL_ASYNC_ERROR_HANDLING
+                  value: '1'
+              command: ["hyperpodrun"]
+              args:
+                - "--tee=3"
+                - "--nnodes=4"
+                - "--nproc_per_node=8"
+                - "-m"
+                - "scripts/train.py"
+               
+              volumeMounts:
+                - name: shmem
+                  mountPath: /dev/shm
+                - name: local
+                  mountPath: /local
+                - name: persistent-storage
+                  mountPath: /data
