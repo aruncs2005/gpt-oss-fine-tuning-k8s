@@ -1,7 +1,7 @@
 apiVersion: sagemaker.amazonaws.com/v1
 kind: HyperPodPyTorchJob
 metadata:
-  name: qwen-hpto
+  name: gptoss-hpto
   labels:
     app.kubernetes.io/name: HyperPod
     app.kubernetes.io/managed-by: kustomize
@@ -14,20 +14,20 @@ spec:
       evalPeriodSeconds: 21600
       maxFullJobRestarts: 1
     cleanPodPolicy: All
-    logMonitoringConfiguration:
-      - name: JobStart
-        logPattern: '.*train/loss:.*'
-        expectedStartCutOffInSeconds: 240
-      - name: JobHangingDetection
-        logPattern: '.*train/loss:.*'
-        expectedRecurringFrequencyInSeconds: 600
+    # logMonitoringConfiguration:
+    #   - name: JobStart
+    #     logPattern: '.*train/loss:.*'
+    #     expectedStartCutOffInSeconds: 240
+    #   - name: JobHangingDetection
+    #     logPattern: '.*train/loss:.*'
+    #     expectedRecurringFrequencyInSeconds: 600
   replicaSpecs:
     - name: pods
       replicas: 2
       template:
         metadata:
           labels:
-            job-name: qwen-sft-hpto
+            job-name: gptoss-qat-hpto
             replica-type: pods
         spec:
           #serviceAccountName: s3-cw-access
@@ -46,7 +46,7 @@ spec:
               requiredDuringSchedulingIgnoredDuringExecution:
                 - labelSelector:
                     matchLabels:
-                      job-name: qwen-sft-hpto
+                      job-name: gptoss-qat-hpto
                   topologyKey: kubernetes.io/hostname
             nodeAffinity:
               requiredDuringSchedulingIgnoredDuringExecution:
@@ -66,10 +66,10 @@ spec:
               whenUnsatisfiable: DoNotSchedule
               labelSelector:
                 matchLabels:
-                  job-name: qwen-sft-hpto
+                  job-name: gptoss-qat-hpto
           containers:
             - name: pytorch
-              image: 535002850097.dkr.ecr.us-east-1.amazonaws.com/verl-training:latest
+              image: 535002850097.dkr.ecr.us-west-1.amazonaws.com/gpt-oss-ft:latest
               imagePullPolicy: Always
               resources:
                 requests:
@@ -112,10 +112,10 @@ spec:
                 - "--tee=3"
                 - "--nnodes=2"
                 - "--nproc_per_node=8"
-                - "/workspace/scripts/train.py"
-                - --model_name=openai/gpt-oss-20b
+                - "/workspace/train.py"
+                - --model-name=/data/gptoss-20b
                 - --dataset-name=HuggingFaceH4/Multilingual-Thinking
-                - --output-dir=/data/gptoss
+                - --output-dir=/data/gptoss-artifacts
               volumeMounts:
                 - name: shmem
                   mountPath: /dev/shm
