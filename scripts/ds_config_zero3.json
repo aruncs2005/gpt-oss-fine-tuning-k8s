@@ -1,5 +1,6 @@
 {
   "train_batch_size": "auto",
+  "deepspeed_moe_layer_cls_names": "GptOssDecoderLayer",
   "train_micro_batch_size_per_gpu": "auto",
   "gradient_accumulation_steps": "auto",
   "gradient_clipping": "auto",
