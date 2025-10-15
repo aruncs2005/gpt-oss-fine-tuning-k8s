@@ -110,7 +110,7 @@ def create_training_config(output_dir: str, world_size: int, local_rank: int):
         lr_scheduler_type="cosine",
         
         # DeepSpeed ZeRO-3 configuration
-        deepspeed="ds_config_zero3.json",
+        deepspeed="ds_config.json",
         
         # Distributed training settings
         dataloader_num_workers=8,
