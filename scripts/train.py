@@ -217,19 +217,19 @@ def main():
         
        # Apply quantization BEFORE trainer initialization
         # This ensures all ranks have identical model structure for DeepSpeed ZeRO-3
-        if rank == 0:
-            logger.info("Applying quantization before trainer initialization...")
+        # if rank == 0:
+        #     logger.info("Applying quantization before trainer initialization...")
         
-        # Use a simple forward loop for calibration
-        quantization_config = mtq.MXFP4_MLP_WEIGHT_ONLY_CFG
+        # # Use a simple forward loop for calibration
+        # quantization_config = mtq.MXFP4_MLP_WEIGHT_ONLY_CFG
         
-        def forward_loop(model):
-            # Minimal calibration - just initialize quantization parameters
-            # We'll do proper calibration after trainer is set up if needed
-            pass
+        # def forward_loop(model):
+        #     # Minimal calibration - just initialize quantization parameters
+        #     # We'll do proper calibration after trainer is set up if needed
+        #     pass
         
-        logger.info(f"Rank {rank}: Applying quantization...")
-        mtq.quantize(model, quantization_config, forward_loop)
+        # logger.info(f"Rank {rank}: Applying quantization...")
+        # mtq.quantize(model, quantization_config, forward_loop)
         
         # Critical: Synchronize to ensure all ranks have identical model structure
         dist.barrier()
@@ -247,9 +247,9 @@ def main():
         )
         
         # Apply quantization (before DeepSpeed initialization)
-        # if rank == 0:
-        #     logger.info("Setting up quantization...")
-        # apply_quantization(model, trainer)
+        if rank == 0:
+            logger.info("Setting up quantization...")
+        apply_quantization(model, trainer)
         
         # DeepSpeed will handle model wrapping automatically
         # ZeRO-3 shards model parameters across all GPUs
