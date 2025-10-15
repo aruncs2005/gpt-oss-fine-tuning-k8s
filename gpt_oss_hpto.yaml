@@ -85,28 +85,28 @@ spec:
                   value: efa
                 - name: FI_EFA_USE_DEVICE_RDMA
                   value: '1'
-                - name: FI_EFA_FORK_SAFE
-                  value: '1'
-                - name: FI_EFA_ENABLE_SHM_TRANSFER
-                  value: '1'
-                - name: TORCH_DISTRIBUTED_DEBUG
-                  value: DETAIL
-                - name: TORCH_NCCL_ENABLE_MONITORING
-                  value: '1'
-                - name: TORCH_NCCL_TRACE_BUFFER_SIZE
-                  value: '20000'
-                - name: TORCH_NCCL_DUMP_ON_TIMEOUT
-                  value: '1'
-                - name: TORCH_NCCL_DEBUG_INFO_TEMP_FILE
-                  value: /local/nccl_trace_rank_
-                - name: PYTORCH_CUDA_ALLOC_CONF
-                  value: 'expandable_segments:True'
+                # - name: FI_EFA_FORK_SAFE
+                #   value: '1'
+                # - name: FI_EFA_ENABLE_SHM_TRANSFER
+                #   value: '1'
+                # - name: TORCH_DISTRIBUTED_DEBUG
+                #   value: DETAIL
+                # - name: TORCH_NCCL_ENABLE_MONITORING
+                #   value: '1'
+                # - name: TORCH_NCCL_TRACE_BUFFER_SIZE
+                #   value: '20000'
+                # - name: TORCH_NCCL_DUMP_ON_TIMEOUT
+                #   value: '1'
+                # - name: TORCH_NCCL_DEBUG_INFO_TEMP_FILE
+                #   value: /local/nccl_trace_rank_
+                # - name: PYTORCH_CUDA_ALLOC_CONF
+                #   value: 'expandable_segments:True'
                 - name: NCCL_DEBUG
                   value: INFO
                 - name: NCCL_SOCKET_IFNAME
                   value: ^lo
-                - name: TORCH_NCCL_ASYNC_ERROR_HANDLING
-                  value: '1'
+                # - name: TORCH_NCCL_ASYNC_ERROR_HANDLING
+                #   value: '1'
               command: ["hyperpodrun"]
               args:
                 - "--tee=3"
