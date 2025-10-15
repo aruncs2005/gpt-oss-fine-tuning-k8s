@@ -83,12 +83,30 @@ def load_model_and_tokenizer(model_name: str, local_rank: int):
     
     return model, tokenizer
 
-def prepare_datasets(dataset_name: str, test_size: float = 0.1):
-    """Load and prepare training datasets"""
-    dataset = load_dataset(dataset_name)
-    dataset = dataset["train"].train_test_split(test_size=test_size, seed=42)
+def prepare_datasets(dataset_name: str, test_size: float = 0.1, rank: int = 0):
+    """Load and prepare training datasets - ensure consistency across all ranks"""
+    # Load dataset with explicit download mode to ensure consistency
+    dataset = load_dataset(dataset_name, download_mode="reuse_cache_if_exists")
     
-    return dataset["train"], dataset["test"]
+    # Get the train split
+    train_data = dataset["train"]
+    
+    # Filter out any None or invalid samples before splitting
+    # This ensures all ranks see the same data
+    def is_valid_sample(example):
+        if isinstance(example, dict):
+            return 'text' in example and example['text'] is not None and len(example['text']) > 0
+        return example is not None and len(str(example)) > 0
+    
+    train_data = train_data.filter(is_valid_sample, desc="Filtering valid samples")
+    
+    # Split with fixed seed for reproducibility across ranks
+    dataset_split = train_data.train_test_split(test_size=test_size, seed=42)
+    
+    if rank == 0:
+        logger.info(f"Dataset sizes - Train: {len(dataset_split['train'])}, Eval: {len(dataset_split['test'])}")
+    
+    return dataset_split["train"], dataset_split["test"]
 
 def create_training_config(output_dir: str, world_size: int, local_rank: int):
     """Create distributed training configuration with DeepSpeed ZeRO-3"""
@@ -121,6 +139,7 @@ def create_training_config(output_dir: str, world_size: int, local_rank: int):
         dataloader_num_workers=8,
         dataloader_pin_memory=True,
         dataloader_prefetch_factor=2,
+        dataloader_drop_last=True,  # Drop incomplete batches to ensure consistency
         
         # Evaluation and logging
         eval_strategy="steps",
@@ -221,10 +240,16 @@ def main():
         logger.info(f"Loading model on rank {rank}")
         model, tokenizer = load_model_and_tokenizer(args.model_name, local_rank)
         
-        # Prepare datasets
+        # Prepare datasets - all ranks load independently but consistently
         if rank == 0:
             logger.info("Loading datasets...")
-        train_dataset, eval_dataset = prepare_datasets(args.dataset_name, args.test_size)
+        train_dataset, eval_dataset = prepare_datasets(args.dataset_name, args.test_size, rank)
+        
+        # Synchronize to ensure all ranks have loaded
+        dist.barrier()
+        
+        if rank == 0:
+            logger.info(f"Dataset loaded - Train: {len(train_dataset)}, Eval: {len(eval_dataset)}")
         
         # Apply quantization BEFORE trainer initialization
         # This ensures all ranks have identical model structure for FSDP
