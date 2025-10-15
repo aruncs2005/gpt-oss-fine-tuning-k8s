@@ -110,14 +110,13 @@ def create_training_config(output_dir: str, world_size: int, local_rank: int):
         lr_scheduler_type="cosine",
         
         # DeepSpeed ZeRO-3 configuration
-       # deepspeed="ds_config.json",
+        deepspeed="/workspace/ds_config.json",
         
-
-        #FSDP
-        fsdp="full_shard auto_wrap",
-        fsdp_config={
-            "fsdp_transformer_layer_cls_to_wrap": "GptOssDecoderLayer", # update as per your model
-        },
+        # FSDP is incompatible with modelopt quantization - use DeepSpeed instead
+        # fsdp="full_shard auto_wrap",
+        # fsdp_config={
+        #     "fsdp_transformer_layer_cls_to_wrap": "GptOssDecoderLayer",
+        # },
         # Distributed training settings
         dataloader_num_workers=8,
         dataloader_pin_memory=True,
