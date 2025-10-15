@@ -152,28 +152,37 @@ def create_training_config(output_dir: str, world_size: int, local_rank: int):
         logging_first_step=True,
     )
 
-def apply_quantization(model, trainer, calib_size: int = 128):
-    """Apply quantization-aware training setup"""
+def apply_quantization(model, tokenizer, eval_dataset, calib_size: int = 128):
+    """Apply quantization-aware training setup BEFORE FSDP wrapping"""
     
     # Use MXFP4 configuration for weight-only quantization
     quantization_config = mtq.MXFP4_MLP_WEIGHT_ONLY_CFG
     
-    # Prepare calibration dataset
-    calib_dataset = torch.utils.data.Subset(
-        trainer.eval_dataset, 
-        list(range(min(len(trainer.eval_dataset), calib_size)))
-    )
-    data_loader = trainer.get_eval_dataloader(calib_dataset)
+    # Prepare calibration dataset with simple collation
+    calib_indices = list(range(min(len(eval_dataset), calib_size)))
     
     def forward_loop(model):
         model.eval()
         with torch.no_grad():
-            for i, data in enumerate(data_loader):
-                if i >= calib_size // trainer.args.per_device_eval_batch_size:
-                    break
-                # Move data to correct device
-                data = {k: v.cuda() if isinstance(v, torch.Tensor) else v for k, v in data.items()}
-                model(**data)
+            for i in calib_indices[:16]:  # Use small subset for calibration
+                sample = eval_dataset[i]
+                # Tokenize and prepare input
+                if isinstance(sample, dict) and 'text' in sample:
+                    text = sample['text']
+                elif isinstance(sample, str):
+                    text = sample
+                else:
+                    continue
+                    
+                inputs = tokenizer(
+                    text,
+                    max_length=512,
+                    truncation=True,
+                    padding='max_length',
+                    return_tensors='pt'
+                )
+                inputs = {k: v.cuda() for k, v in inputs.items()}
+                model(**inputs)
     
     # Apply quantization
     logger.info("Applying quantization configuration...")
@@ -218,31 +227,22 @@ def main():
             logger.info("Loading datasets...")
         train_dataset, eval_dataset = prepare_datasets(args.dataset_name, args.test_size)
         
-        # Create training configuration
-        training_args = create_training_config(args.output_dir, world_size, local_rank)
+        # Apply quantization BEFORE trainer initialization
+        # This ensures all ranks have identical model structure for FSDP
+        if rank == 0:
+            logger.info("Applying quantization before FSDP wrapping...")
         
-       # Apply quantization BEFORE trainer initialization
-        # This ensures all ranks have identical model structure for DeepSpeed ZeRO-3
-        # if rank == 0:
-        #     logger.info("Applying quantization before trainer initialization...")
-        
-        # # Use a simple forward loop for calibration
-        # quantization_config = mtq.MXFP4_MLP_WEIGHT_ONLY_CFG
-        
-        # def forward_loop(model):
-        #     # Minimal calibration - just initialize quantization parameters
-        #     # We'll do proper calibration after trainer is set up if needed
-        #     pass
-        
-        # logger.info(f"Rank {rank}: Applying quantization...")
-        # mtq.quantize(model, quantization_config, forward_loop)
+        apply_quantization(model, tokenizer, eval_dataset)
         
         # Critical: Synchronize to ensure all ranks have identical model structure
         dist.barrier()
         if rank == 0:
             logger.info("Quantization applied consistently across all ranks")
+        
+        # Create training configuration
+        training_args = create_training_config(args.output_dir, world_size, local_rank)
 
-        # Initialize trainer
+        # Initialize trainer (FSDP wrapping happens here)
         logger.info(f"Initializing trainer on rank {rank}")
         trainer = SFTTrainer(
             model=model,
@@ -251,11 +251,6 @@ def main():
             eval_dataset=eval_dataset,
             processing_class=tokenizer,
         )
-        
-        # Apply quantization (before DeepSpeed initialization)
-        if rank == 0:
-            logger.info("Setting up quantization...")
-        apply_quantization(model, trainer)
         
         # DeepSpeed will handle model wrapping automatically
         # ZeRO-3 shards model parameters across all GPUs
