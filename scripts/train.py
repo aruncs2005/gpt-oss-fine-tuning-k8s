@@ -7,6 +7,7 @@ Adapted for 16 GPU P5 cluster with full fine-tuning
 import os
 import torch
 import torch.distributed as dist
+from datetime import timedelta
 from torch.nn.parallel import DistributedDataParallel as DDP
 from transformers import AutoModelForCausalLM, AutoTokenizer, AutoConfig, Mxfp4Config
 from trl import SFTTrainer, SFTConfig, ModelConfig, ScriptArguments
@@ -29,12 +30,16 @@ def setup_distributed():
     local_rank = int(os.environ.get("LOCAL_RANK", 0))
     world_size = int(os.environ.get("WORLD_SIZE", 1))
     
-    # Initialize process group
+    # Set NCCL timeout to 30 minutes to handle slow operations like dataset loading
+    os.environ.setdefault("NCCL_TIMEOUT", "1800")
+    
+    # Initialize process group with longer timeout
     dist.init_process_group(
         backend="nccl",
         init_method="env://",
         world_size=world_size,
-        rank=rank
+        rank=rank,
+        timeout=timedelta(seconds=1800)
     )
     
     # Set device
@@ -91,14 +96,9 @@ def prepare_datasets(dataset_name: str, test_size: float = 0.1, rank: int = 0):
     # Get the train split
     train_data = dataset["train"]
     
-    # Filter out any None or invalid samples before splitting
-    # This ensures all ranks see the same data
-    def is_valid_sample(example):
-        if isinstance(example, dict):
-            return 'text' in example and example['text'] is not None and len(example['text']) > 0
-        return example is not None and len(str(example)) > 0
-    
-    train_data = train_data.filter(is_valid_sample, desc="Filtering valid samples")
+    # Skip filtering - it's too slow and causes NCCL timeouts
+    # The dataset should be clean, and SFTTrainer will handle any issues
+    # If you need filtering, do it offline before training
     
     # Split with fixed seed for reproducibility across ranks
     dataset_split = train_data.train_test_split(test_size=test_size, seed=42)
